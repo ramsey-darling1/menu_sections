@@ -1,0 +1,145 @@
+<?php
+/**
+ *
+ * Display Child Nav Items for the Current Page
+ * @rdar
+ *
+ *  == BEGIN LICENSE ==
+ *  - GNU General Public License Version 2 or later (the "GPL")
+ *  http://www.gnu.org/licenses/gpl.html
+ *  == END LICENSE ==
+ *
+ * @file
+ * Display Child Nav Items for the Current Page
+ *
+ */
+
+
+/**
+ * Implements hook_permission().
+ */
+function menu_sections_attributes_permission() {
+  return array(
+    'administer menu attributes' => array(
+      'title' => t('Administer menu attributes'),
+      'description' => t('Administer menu attributes.'),
+    ),
+  );
+}
+
+/**
+* Implements hook_block_info().
+*/
+
+function menu_sections_block_info() {
+    //create a block to display our dynamic menu sections
+    $blocks['menu_sections'] = array(
+         'info' => t('Menu Sections'),
+         'cache' => DRUPAL_NO_CACHE,
+          );
+
+    return $blocks;
+}
+
+/**
+* Implements hook_block_view()
+ */
+
+function menu_sections_block_view(){
+    //put junk into the block for the user to see
+    $block = array();
+    $block['content'] = ms_display_child_menu_items();
+    return $block;
+}
+
+/**
+ * Main Function
+ */
+
+function ms_display_child_menu_items(){
+    //list out links for the child menu items of the current page
+    $res = '';
+    $link = ms_find_current_link();
+    $tree = menu_tree_all_data('main-menu',$link);
+    $links_to_display = ms_parse_the_tree($tree);
+    if(!empty($links_to_display)){
+        $res = ms_generate_html_menu($links_to_display);
+    }
+    return $res;
+}
+
+function ms_find_current_link(){
+    $current_path = current_path();
+    $mlid = array();
+    $menu_info = db_select('menu_links' , 'ml')
+        ->condition('ml.link_path' , $current_path)
+        ->fields('ml', array('mlid', 'plid'))
+        ->execute()
+        ->fetchAll();
+
+    foreach($menu_info as $key => $value) {
+        $mlid[] = $menu_info[$key]->mlid;
+    }
+    return !empty($mlid[0]) ? menu_link_load($mlid[0]) : false;
+}
+
+function ms_parse_the_tree($tree){
+    $res = array();
+    $current_path = current_path();
+    $active_trail = menu_get_active_trail();
+    if(!empty($tree)){
+        foreach($tree as $item){
+            if(@$item['link']['link_title'] == @$active_trail[1]['link_title']){
+                //we are on the right trail
+                //now we need to follow the rabbit hole down
+                $res = ms_follow_the_rabbit_hole_down(@$item['below'],$current_path);
+                break;
+            }
+        }
+    }
+    return $res;
+}
+
+function ms_follow_the_rabbit_hole_down($items,$current_path){
+    //recurse until we find what we need
+    if(!empty($items)){
+        foreach($items as $child_item){
+            if($child_item['link']['link_path'] == $current_path){
+                //we finially found the current item to work with.
+                $res = ms_collect_links_to_display($child_item['below']);
+            }elseif(empty($res)){
+                $res = ms_follow_the_rabbit_hole_down($child_item['below'],$current_path);
+            }
+        }
+    }
+    return @$res;
+}
+
+function ms_collect_links_to_display($items){
+    //here is where we grab the child nav items for the current item
+    $res = array();
+    if(!empty($items)){
+        foreach($items as $item_to_display){
+            $res[] = array(
+                'link_title' => $item_to_display['link']['link_title'],
+                'link_path' => $item_to_display['link']['link_path']
+            );
+        }
+    }
+    return $res;
+}
+
+function ms_generate_html_menu($links){
+    $res = '';
+    if(!empty($links)){
+        $res .= '<nav class="section-nav-menu">';
+        $res .= '<a class="block__title" href="#sectionMenu">In this section</a>';
+        $res .= '<ul class="menu" id="sectionMenu">';
+        foreach($links as $link){
+            $res .= '<li class="section-menu-item"><a class="section-menu-link" href="'.url($link['link_path']).'">'.$link['link_title'].'</a></li>';
+        }
+        $res .= '</ul></nav>';
+    }
+    return $res;
+}
+

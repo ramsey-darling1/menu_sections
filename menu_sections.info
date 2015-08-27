@@ -1,0 +1,4 @@
+name = Menu Sections
+description = Display Child Nav Items for the Current Page
+core = 7.x
+
